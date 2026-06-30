@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { useState, useEffect, useCallback } from "react";
 import { tailorResume as aiTailor } from "~/lib/ai-service";
-import { createCheckout } from "~/lib/checkout";
+import { getCheckoutUrl } from "~/lib/checkout";
 
 // ---------------------------------------------------------------------------
 // Server function — uses the AI service module (supports OpenAI, Anthropic & AI21).
@@ -36,12 +36,11 @@ function Home() {
   const [paid, setPaid] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
 
-  // Check for ?paid=true on page load
-  // Check for successful payment redirect (Square adds transactionId)
+  // Check for successful payment redirect (Stripe adds session_id)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const transactionId = params.get("transactionId");
-    if (params.get("paid") === "true" || transactionId) {
+    const sessionId = params.get("session_id");
+    if (params.get("paid") === "true" || sessionId) {
       setPaid(true);
       sessionStorage.setItem("tailorcv_paid", "true");
       window.history.replaceState({}, "", "/");
@@ -82,21 +81,15 @@ function Home() {
 
   const handleCheckout = useCallback(async (planId: string) => {
     setCheckoutLoading(planId);
-    try {
-      const result = await createCheckout({ data: { plan: planId } });
-      if (!result.configured) {
-        alert(result.message || "Payments coming soon — sign up for early access.");
-        return;
-      }
-      if (result.url) {
-        sessionStorage.setItem("tailorcv_checkout_plan", planId);
-        window.location.href = result.url;
-      }
-    } catch {
-      alert("Payment service is temporarily unavailable. Please try again.");
-    } finally {
-      setCheckoutLoading(null);
+    // Small delay so the button shows "Opening..." state
+    await new Promise((r) => setTimeout(r, 300));
+    const result = getCheckoutUrl(planId);
+    if (!result.configured || !result.url) {
+      alert(result.message || "Payment link not available.");
+      return;
     }
+    sessionStorage.setItem("tailorcv_checkout_plan", planId);
+    window.location.href = result.url;
   }, []);
 
   const handlePayAndDownload = useCallback(async () => {
